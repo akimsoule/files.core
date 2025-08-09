@@ -1,0 +1,2 @@
+Ceci est un fichier d'exemple créé par le script seed.
+Il contient du contenu de test pour démontrer le fonctionnement de Files Core CLI.

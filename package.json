@@ -1,0 +1,67 @@
+{
+  "name": "files-core",
+  "version": "1.0.0",
+  "description": "CLI TypeScript CRUD pour la gestion de documents avec stockage MEGA et base de données SQLite",
+  "main": "dist/cli/index.js",
+  "bin": {
+    "files-core": "./dist/cli/index.js"
+  },
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/cli/index.js",
+    "dev": "ts-node src/cli/index.ts",
+    "watch": "nodemon --exec ts-node src/cli/index.ts",
+    "clean": "rm -rf dist",
+    
+    "test": "npm run test-functional",
+    "test-functional": "ts-node z_scripts/test.ts",
+    "test-fast": "MEGA_SKIP=true ts-node z_scripts/test.ts",
+    "test-strict": "STRICT_MODE=true ts-node z_scripts/test.ts",
+    "test-no-clear": "SKIP_CLEAR=true ts-node z_scripts/test.ts",
+    "test-with-mega": "./z_scripts/test-with-mega.sh",
+    
+    "menu": "ts-node z_scripts/menu.ts",
+    "seed": "ts-node z_scripts/seed.ts",
+    "setup": "./setup.sh",
+    
+    "prisma:generate": "prisma generate",
+    "prisma:migrate": "prisma migrate dev",
+    "prisma:studio": "prisma studio",
+    "prisma:reset": "prisma migrate reset --force",
+    "prisma:init": "prisma migrate dev --name init",
+    "prisma:deploy": "prisma migrate deploy",
+    
+    "setup-dev": "npm install && npm run prisma:migrate && npm run seed",
+    "setup-fresh": "npm install && npm run prisma:reset && npm run seed"
+  },
+  "keywords": [
+    "cli",
+    "typescript",
+    "crud",
+    "documents",
+    "mega",
+    "sqlite",
+    "prisma"
+  ],
+  "author": "Files Core CLI",
+  "license": "MIT",
+  "type": "commonjs",
+  "engines": {
+    "node": ">=16.0.0"
+  },
+  "dependencies": {
+    "@prisma/client": "^6.13.0",
+    "@types/node": "^24.2.0",
+    "bcryptjs": "^3.0.2",
+    "commander": "^14.0.0",
+    "dotenv": "^17.2.1",
+    "megajs": "^1.3.8",
+    "prisma": "^6.13.0",
+    "typescript": "^5.9.2"
+  },
+  "devDependencies": {
+    "@types/bcryptjs": "^2.4.6",
+    "nodemon": "^3.1.10",
+    "ts-node": "^10.9.2"
+  }
+}

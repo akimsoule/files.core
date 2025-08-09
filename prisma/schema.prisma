@@ -1,0 +1,57 @@
+// Prisma schema for doc-keeper-vault backend
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = "file:./dev.db"
+}
+
+model User {
+  id           String     @id @default(uuid())
+  email        String     @unique
+  name         String
+  passwordHash String
+  createdAt    DateTime   @default(now())
+  updatedAt    DateTime   @updatedAt
+  documents    Document[]
+  logs         Log[]      @relation("UserLogs")
+}
+
+model Document {
+  id          String     @id @default(uuid())
+  name        String
+  type        String
+  category    String
+  size        Int
+  description String?
+  tags        String     @default("") // Tags séparés par des virgules
+  fileId      String     // MEGA file ID
+  owner       User       @relation(fields: [ownerId], references: [id])
+  ownerId     String
+  isFavorite  Boolean    @default(false)
+  createdAt   DateTime   @default(now())
+  modifiedAt  DateTime   @updatedAt
+  logs        Log[]      @relation("DocumentLogs")
+
+  @@map("documents")
+}
+
+model Log {
+  id          String    @id @default(uuid())
+  action      String    // CREATE, UPDATE, DELETE, UPLOAD, DOWNLOAD, etc.
+  entity      String    // USER, DOCUMENT
+  entityId    String    // ID of the affected entity
+  details     String?   // Additional details about the action
+  ipAddress   String?
+  userAgent   String?
+  user        User?     @relation("UserLogs", fields: [userId], references: [id])
+  userId      String?
+  document    Document? @relation("DocumentLogs", fields: [documentId], references: [id])
+  documentId  String?
+  createdAt   DateTime  @default(now())
+
+  @@map("logs")
+}
