@@ -118,12 +118,44 @@ export class MegaStorageService {
   /**
    * Suppression d'un fichier
    * @param fileId - ID du fichier à supprimer
+   * @param folderId - ID du dossier où chercher (optionnel, si non fourni cherche dans tout le compte)
    */
-  async deleteFile(fileId: string): Promise<void> {
+  async deleteFile(fileId: string, folderId?: string): Promise<void> {
     const storage = await this.getStorage();
-    const file = storage.find(f => f.nodeId === fileId);
-    if (!file) throw new Error('Fichier non trouvé');
+    console.log(`🔍 Recherche du fichier avec ID: ${fileId}`);
+    
+    let searchFiles: any[];
+    
+    if (folderId) {
+      // Chercher uniquement dans le dossier spécifié
+      const folder = storage.find(f => f.nodeId === folderId);
+      if (!folder) {
+        throw new Error(`Dossier avec ID ${folderId} non trouvé`);
+      }
+      searchFiles = Object.values(folder.children || {});
+      console.log(`📁 Recherche dans le dossier spécifique: ${searchFiles.length} fichiers`);
+    } else {
+      // Chercher dans tout le storage
+      searchFiles = Object.values(storage.files);
+      console.log(`📁 ${searchFiles.length} fichiers totaux dans le storage`);
+    }
+    
+    const file = searchFiles.find(f => f.nodeId === fileId);
+    if (!file) {
+      console.log(`❌ Fichier ${fileId} non trouvé`);
+      console.log(`🔍 Fichiers disponibles:`);
+      searchFiles.slice(0, 5).forEach(f => {
+        console.log(`   - ${f.name} (ID: ${f.nodeId})`);
+      });
+      if (searchFiles.length > 5) {
+        console.log(`   ... et ${searchFiles.length - 5} autres fichiers`);
+      }
+      throw new Error('Fichier non trouvé');
+    }
+    
+    console.log(`✅ Fichier trouvé: ${file.name} (ID: ${file.nodeId})`);
     await file.delete();
+    console.log(`🗑️ Fichier supprimé avec succès`);
   }
 
   /**
@@ -172,5 +204,71 @@ export class MegaStorageService {
       });
       uploadStream.on('error', reject);
     });
+  }
+
+  /**
+   * Récupère tous les fichiers de MEGA avec leur contenu.
+   * @param folderId - ID du dossier à scanner (optionnel, par défaut le dossier racine)
+   * @returns Un tableau d'objets contenant les informations et le buffer de chaque fichier.
+   */
+  async getAllFilesWithContent(folderId?: string): Promise<{ fileId: string; name: string; buffer: Buffer }[]> {
+    const storage = await this.getStorage();
+    
+    let targetFolder;
+    if (folderId) {
+      targetFolder = storage.find(f => f.nodeId === folderId);
+      if (!targetFolder) {
+        throw new Error(`Dossier avec l'ID ${folderId} non trouvé`);
+      }
+    } else {
+      targetFolder = storage.root;
+    }
+    
+    const files = Object.values(storage.files).filter(file => 
+      file.parent === targetFolder && !file.directory
+    );
+    
+    console.log(`📁 Scanning ${folderId ? 'dossier spécifique' : 'dossier racine'}: ${files.length} fichiers trouvés`);
+    
+    const filesWithContent = [];
+
+    for (const file of files) {
+      if (!file.nodeId || !file.name) continue; // Ignorer les fichiers sans ID ou nom
+
+      try {
+        console.log(`   ⬇️ Téléchargement: ${file.name}...`);
+        const buffer = await file.downloadBuffer({});
+        filesWithContent.push({
+          fileId: file.nodeId,
+          name: file.name,
+          buffer: buffer,
+        });
+        console.log(`   ✅ ${file.name} téléchargé (${buffer.length} bytes)`);
+      } catch (error) {
+        console.error(`   ❌ Erreur lors du téléchargement du fichier ${file.name} (${file.nodeId}):`, error);
+        // Continuer avec les autres fichiers même si un échoue
+      }
+    }
+
+    return filesWithContent;
+  }
+
+  /**
+   * Crée un dossier sur MEGA
+   * @param name - Nom du dossier
+   * @param parentFolderId - ID du dossier parent (optionnel, par défaut le dossier racine)
+   * @returns ID du dossier créé
+   */
+  async createFolder(name: string, parentFolderId?: string): Promise<string> {
+    const storage = await this.getStorage();
+    const parentFolder = parentFolderId 
+      ? storage.find(f => f.nodeId === parentFolderId) || storage.root
+      : storage.root;
+
+    const folder = await parentFolder.mkdir(name);
+    if (!folder.nodeId) {
+      throw new Error('Impossible de créer le dossier');
+    }
+    return folder.nodeId;
   }
 }

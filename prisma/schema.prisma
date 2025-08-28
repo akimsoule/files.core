@@ -29,6 +29,7 @@ model Document {
   description String?
   tags        String     @default("") // Tags séparés par des virgules
   fileId      String     // MEGA file ID
+  hash        String     @unique
   owner       User       @relation(fields: [ownerId], references: [id])
   ownerId     String
   isFavorite  Boolean    @default(false)

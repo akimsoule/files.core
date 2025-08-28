@@ -77,9 +77,25 @@ interface FunctionalTest {
 // Variables pour stocker les données de test créées
 let createdUserId: string;
 let createdDocumentId: string;
+let testFolderId: string; // ID du dossier de test sur MEGA
 
 // Configuration des tests fonctionnels à exécuter
 const functionalTests: FunctionalTest[] = [
+  // === PHASE 0: PRÉPARATION ===
+  {
+    name: 'mega-folder-setup',
+    description: '📁 Création du dossier de test sur MEGA',
+    canFail: true,
+    isMegaRelated: true,
+    testFunction: async () => {
+      const timestamp = Date.now();
+      const folderName = `files-core-tests-${timestamp}`;
+      testFolderId = await megaStorageService.createFolder(folderName);
+      console.log(`📁 Dossier de test créé: ${folderName} (ID: ${testFolderId})`);
+      return { folderId: testFolderId, folderName };
+    }
+  },
+
   // === PHASE 1: CRÉATION ET LECTURE ===
   {
     name: 'user-create',
@@ -127,6 +143,11 @@ const functionalTests: FunctionalTest[] = [
           buffer: fileBuffer,
           mimeType: 'text/plain'
         };
+      }
+      
+      // Utiliser le dossier de test pour l'upload
+      if (testFolderId) {
+        documentData.testFolderId = testFolderId;
       }
       
       const document = await documentService.createDocument(documentData);
@@ -216,7 +237,39 @@ const functionalTests: FunctionalTest[] = [
     }
   },
 
-  // === PHASE 4: SUPPRESSION (À LA FIN) ===
+  // === PHASE 4: SYNCHRONISATION ET SUPPRESSION ===
+  {
+    name: 'document-sync',
+    description: '🔄 Synchronisation des fichiers MEGA vers la DB',
+    canFail: true,
+    isMegaRelated: true,
+    testFunction: async () => {
+      // Pour ce test, nous allons d'abord supprimer le document de la DB
+      // pour simuler un fichier existant sur MEGA mais pas en local.
+      if (createdDocumentId) {
+        // On supprime aussi les logs associés pour éviter les soucis de contraintes
+        await prisma.log.deleteMany({ where: { documentId: createdDocumentId } });
+        await prisma.document.delete({ where: { id: createdDocumentId } });
+      }
+      
+      // Utiliser le dossier de test pour la synchronisation
+      const syncResult = await documentService.synchronizeMegaFiles(createdUserId, testFolderId);
+      
+      if (syncResult.syncedCount === 0) {
+        throw new Error("La synchronisation n'a trouvé aucun nouveau document à ajouter.");
+      }
+      if (syncResult.syncedCount > 1) {
+        console.warn(`Attention: La synchronisation a ajouté ${syncResult.syncedCount} documents. Le test n'en attendait qu'un.`);
+      }
+      
+      // Mettre à jour l'ID du document pour les tests suivants
+      if (syncResult.newDocuments && syncResult.newDocuments.length > 0) {
+        createdDocumentId = (syncResult.newDocuments[0] as any).id;
+      }
+      
+      return syncResult;
+    }
+  },
   {
     name: 'document-delete',
     description: '🗑️ Suppression d\'un document via DocumentService',
@@ -226,7 +279,7 @@ const functionalTests: FunctionalTest[] = [
       if (!createdDocumentId) {
         throw new Error('Aucun document créé pour la suppression');
       }
-      return await documentService.deleteDocument(createdDocumentId, createdUserId);
+      return await documentService.deleteDocument(createdDocumentId, createdUserId, testFolderId);
     }
   },
   {
