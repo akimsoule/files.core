@@ -24,7 +24,7 @@ export class UserService {
 
   async createUser(data: CreateUserData) {
     const existingUser = await prisma.user.findUnique({
-      where: { email: data.email }
+      where: { email: data.email.toLowerCase() }
     });
 
     if (existingUser) {
@@ -35,7 +35,7 @@ export class UserService {
 
     const user = await prisma.user.create({
       data: {
-        email: data.email,
+        email: data.email.toLowerCase(),
         name: data.name,
         passwordHash: hashedPassword,
       },
@@ -73,7 +73,6 @@ export class UserService {
             id: true,
             name: true,
             type: true,
-            category: true,
             size: true,
             createdAt: true,
           }
@@ -84,7 +83,7 @@ export class UserService {
 
   async getUserByEmail(email: string) {
     return prisma.user.findUnique({
-      where: { email },
+      where: { email: email.toLowerCase() },
       select: {
         id: true,
         email: true,
@@ -115,7 +114,7 @@ export class UserService {
   }
 
   async updateUser(id: string, data: UpdateUserData) {
-    const updateData: any = {};
+  const updateData: Partial<{ name: string; email: string; passwordHash: string }> = {};
 
     if (data.name) updateData.name = data.name;
     if (data.email) updateData.email = data.email;

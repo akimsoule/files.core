@@ -1,0 +1,9 @@
+export { DocumentService } from './documentService';
+export { LogService } from './logService';
+export { TagService } from './tagService';
+export { FolderService } from './folderService';
+export { SearchService } from './searchService';
+export { StatsService } from './statsService';
+export { ActivityService } from './activityService';
+export { BackupService } from './backupService';
+export { UserService } from './userService';

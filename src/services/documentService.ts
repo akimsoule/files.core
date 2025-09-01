@@ -9,7 +9,6 @@ import crypto from "crypto";
 export interface CreateDocumentData {
   name: string;
   type: string;
-  category: string;
   description?: string;
   tags?: string; // Tags séparés par des virgules
   ownerId?: string;
@@ -26,7 +25,6 @@ export interface CreateDocumentData {
 export interface UpdateDocumentData {
   name?: string;
   type?: string;
-  category?: string;
   description?: string;
   tags?: string; // Tags séparés par des virgules
   isFavorite?: boolean;
@@ -39,6 +37,130 @@ export class DocumentService {
   constructor(megaStorageService: MegaStorageService, logService: LogService) {
     this.megaStorageService = megaStorageService;
     this.logService = logService;
+  }
+
+  /**
+   * Détermine le type de document basé sur le nom du fichier et éventuellement le type MIME
+   * @param fileName - Nom du fichier avec extension
+   * @param mimeType - Type MIME optionnel
+   * @returns Type de document standardisé
+   */
+  private getDocumentTypeFromFile(fileName: string, mimeType?: string): string {
+    const extension = fileName.split('.').pop()?.toLowerCase() || '';
+    
+    // Types basés sur l'extension du fichier
+    const typeMapping: Record<string, string> = {
+      // Documents
+      'pdf': 'document',
+      'doc': 'document',
+      'docx': 'document',
+      'txt': 'document',
+      'rtf': 'document',
+      'odt': 'document',
+      
+      // Feuilles de calcul
+      'xls': 'spreadsheet',
+      'xlsx': 'spreadsheet',
+      'csv': 'spreadsheet',
+      'ods': 'spreadsheet',
+      
+      // Présentations
+      'ppt': 'presentation',
+      'pptx': 'presentation',
+      'odp': 'presentation',
+      
+      // Images
+      'jpg': 'image',
+      'jpeg': 'image',
+      'png': 'image',
+      'gif': 'image',
+      'bmp': 'image',
+      'svg': 'image',
+      'webp': 'image',
+      
+      // Vidéos
+      'mp4': 'video',
+      'avi': 'video',
+      'mov': 'video',
+      'wmv': 'video',
+      'webm': 'video',
+      'mkv': 'video',
+      
+      // Audio
+      'mp3': 'audio',
+      'wav': 'audio',
+      'ogg': 'audio',
+      'flac': 'audio',
+      'aac': 'audio',
+      
+      // Archives
+      'zip': 'archive',
+      'rar': 'archive',
+      '7z': 'archive',
+      'tar': 'archive',
+      'gz': 'archive',
+      
+      // Code
+      'js': 'code',
+      'ts': 'code',
+      'html': 'code',
+      'css': 'code',
+      'json': 'code',
+      'xml': 'code',
+      'py': 'code',
+      'java': 'code',
+      'cpp': 'code',
+      'c': 'code',
+    };
+    
+    // Vérifier d'abord par extension
+    if (typeMapping[extension]) {
+      return typeMapping[extension];
+    }
+    
+    // Fallback sur le MIME type si disponible
+    if (mimeType) {
+      if (mimeType.startsWith('image/')) return 'image';
+      if (mimeType.startsWith('video/')) return 'video';
+      if (mimeType.startsWith('audio/')) return 'audio';
+      if (mimeType.startsWith('text/')) return 'document';
+      if (mimeType.includes('pdf')) return 'document';
+      if (mimeType.includes('word')) return 'document';
+      if (mimeType.includes('excel') || mimeType.includes('spreadsheet')) return 'spreadsheet';
+      if (mimeType.includes('powerpoint') || mimeType.includes('presentation')) return 'presentation';
+    }
+    
+    // Par défaut
+    return 'document';
+  }
+
+    /**
+   * Ajoute un tag basé sur le type de document
+   * @param type - Type de document détecté
+   * @param existingTags - Tags existants
+   * @returns Tags mis à jour
+   */
+  private addTagFromType(type: string, existingTags: string = ''): string {
+    const typeTagMapping: Record<string, string> = {
+      'document': 'documents',
+      'spreadsheet': 'documents',
+      'presentation': 'documents',
+      'image': 'images',
+      'video': 'vidéos',
+      'audio': 'audio',
+      'archive': 'archives',
+      'code': 'code',
+      'other': 'autres'
+    };
+    
+    const typeTag = typeTagMapping[type] || 'autres';
+    const tags = existingTags ? existingTags.split(',').map(t => t.trim()) : [];
+    
+    if (!tags.includes(typeTag)) {
+      tags.push(typeTag);
+    }
+    
+    return tags.join(',');
   }
 
   async createDocument(data: CreateDocumentData) {
@@ -75,7 +197,8 @@ export class DocumentService {
         name,
         mimeType,
         fileBuffer,
-        data.testFolderId
+        data.testFolderId,
+        ownerId
       );
       fileSize = fileBuffer.length;
     } else if (data.file) {
@@ -84,7 +207,8 @@ export class DocumentService {
         data.file.name,
         data.file.mimeType,
         fileBuffer,
-        data.testFolderId
+        data.testFolderId,
+        ownerId
       );
       fileSize = fileBuffer.length;
     }
@@ -100,16 +224,9 @@ export class DocumentService {
       data: {
         name: data.name,
         type: data.type,
-        category: data.category,
         size: fileSize,
         description: data.description,
-        tags: data.tags
-          ? (Array.isArray(data.tags) ? data.tags.join(",") : data.tags)
-              .split(",")
-              .map((tag) => tag.trim())
-              .filter(Boolean)
-              .join(",")
-          : "",
+        tags: this.addTagFromType(data.type, data.tags || ""),
         fileId,
         hash, // Ajout du hash
         ownerId: ownerId,
@@ -200,20 +317,30 @@ export class DocumentService {
     take = 20,
     filters?: {
       type?: string;
-      category?: string;
       ownerId?: string;
       tags?: string[];
+      tag?: string; // Tag unique pour compatibilité
       search?: string;
     }
   ) {
-    const where: any = {};
+    const where: Record<string, unknown> = {};
 
     if (filters?.type) where.type = filters.type;
-    if (filters?.category) where.category = filters.category;
     if (filters?.ownerId) where.ownerId = filters.ownerId;
+    
+    // Gérer les tags multiples ou un tag unique
     if (filters?.tags && filters.tags.length > 0) {
       where.tags = { hasSome: filters.tags };
+    } else if (filters?.tag) {
+      // Filtrage par tag unique - rechercher dans la chaîne de tags
+      where.tags = { contains: filters.tag };
+    } else {
+      // PAR DÉFAUT : exclure les documents archivés si aucun tag spécifique n'est demandé
+      where.NOT = {
+        tags: { contains: "archived" }
+      };
     }
+    
     if (filters?.search) {
       where.OR = [
         { name: { contains: filters.search, mode: "insensitive" } },
@@ -235,6 +362,43 @@ export class DocumentService {
         },
       },
       orderBy: { createdAt: "desc" },
+    });
+  }
+
+  async getDocumentCount(filters?: {
+    type?: string;
+    ownerId?: string;
+    tags?: string[];
+    tag?: string; // Tag unique pour compatibilité
+    search?: string;
+  }) {
+    const where: Record<string, unknown> = {};
+
+    if (filters?.type) where.type = filters.type;
+    if (filters?.ownerId) where.ownerId = filters.ownerId;
+    
+    // Gérer les tags multiples ou un tag unique
+    if (filters?.tags && filters.tags.length > 0) {
+      where.tags = { hasSome: filters.tags };
+    } else if (filters?.tag) {
+      // Filtrage par tag unique - rechercher dans la chaîne de tags
+      where.tags = { contains: filters.tag };
+    } else {
+      // PAR DÉFAUT : exclure les documents archivés si aucun tag spécifique n'est demandé
+      where.NOT = {
+        tags: { contains: "archived" }
+      };
+    }
+    
+    if (filters?.search) {
+      where.OR = [
+        { name: { contains: filters.search, mode: "insensitive" } },
+        { description: { contains: filters.search, mode: "insensitive" } },
+      ];
+    }
+
+    return prisma.document.count({
+      where,
     });
   }
 
@@ -276,19 +440,21 @@ export class DocumentService {
   }
 
   async updateDocument(id: string, data: UpdateDocumentData, userId: string) {
+    const updateData: Partial<UpdateDocumentData & { modifiedAt: Date }> = {
+      ...data,
+      tags: data.tags
+        ? (Array.isArray(data.tags) ? data.tags.join(",") : data.tags)
+            .split(",")
+            .map((tag) => tag.trim())
+            .filter(Boolean)
+            .join(",")
+        : undefined,
+      modifiedAt: new Date(),
+    };
+
     const document = await prisma.document.update({
       where: { id },
-      data: {
-        ...data,
-        tags: data.tags
-          ? (Array.isArray(data.tags) ? data.tags.join(",") : data.tags)
-              .split(",")
-              .map((tag) => tag.trim())
-              .filter(Boolean)
-              .join(",")
-          : undefined,
-        modifiedAt: new Date(),
-      },
+      data: updateData,
       include: {
         owner: {
           select: {
@@ -376,7 +542,7 @@ export class DocumentService {
     // Suppression du fichier sur MEGA
     if (document.fileId) {
       try {
-        await this.megaStorageService.deleteFile(document.fileId, folderId);
+        await this.megaStorageService.deleteFile(document.fileId, document.ownerId, folderId);
         console.log(`🗑️ Fichier MEGA supprimé: ${document.fileId}`);
       } catch (error) {
         console.warn(`⚠️ Impossible de supprimer le fichier MEGA (${document.fileId}): ${error instanceof Error ? error.message : error}`);
@@ -406,7 +572,8 @@ export class DocumentService {
     }
 
     const fileBuffer = await this.megaStorageService.downloadFile(
-      document.fileId
+      document.fileId,
+      document.ownerId
     );
 
     await this.logService.log({
@@ -421,7 +588,7 @@ export class DocumentService {
     return {
       buffer: fileBuffer,
       filename: document.name,
-      mimeType: this.getMimeTypeFromExtension(document.type),
+      mimeType: this.getMimeTypeFromType(document.type),
     };
   }
 
@@ -438,7 +605,7 @@ export class DocumentService {
       throw new Error("Aucun fichier associé à ce document");
     }
 
-    const url = await this.megaStorageService.getFileUrl(document.fileId);
+    const url = await this.megaStorageService.getFileUrl(document.fileId, document.ownerId);
 
     await this.logService.log({
       action: "DOCUMENT_DOWNLOAD",
@@ -454,7 +621,7 @@ export class DocumentService {
 
   async getDocumentStats() {
     const stats = await prisma.document.groupBy({
-      by: ["type", "category"],
+      by: ["type"],
       _count: {
         id: true,
       },
@@ -471,7 +638,7 @@ export class DocumentService {
     return {
       totalDocuments,
       totalSize: totalSize._sum.size || 0,
-      byTypeAndCategory: stats,
+      byType: stats,
     };
   }
 
@@ -483,14 +650,47 @@ export class DocumentService {
    */
   async synchronizeMegaFiles(defaultOwnerId: string, folderId?: string) {
     console.log(`🔄 Démarrage de la synchronisation des fichiers MEGA${folderId ? ' (dossier spécifique)' : ' (compte complet)'}...`);
-    const megaFiles = await this.megaStorageService.getAllFilesWithContent(folderId);
+    const megaFiles = await this.megaStorageService.getAllFilesWithContent(defaultOwnerId, folderId);
     console.log(`🔍 ${megaFiles.length} fichiers trouvés sur MEGA.`);
 
-    const allDocuments = await prisma.document.findMany({ select: { id: true, hash: true, name: true } });
+    const allDocuments = await prisma.document.findMany({ 
+      select: { 
+        id: true, 
+        hash: true, 
+        name: true, 
+        tags: true 
+      } 
+    });
     console.log(`📄 ${allDocuments.length} documents trouvés dans la base de données.`);
-
-    const newDocuments = [];
-    const updatedDocuments = [];
+    
+    const newDocuments: Array<{
+      id: string;
+      name: string;
+      type: string;
+      size: number;
+      description?: string | null;
+      tags: string;
+      fileId: string;
+      hash: string;
+      ownerId: string;
+      isFavorite: boolean;
+      createdAt: Date;
+      modifiedAt: Date;
+    }> = [];
+    const updatedDocuments: Array<{
+      id: string;
+      name: string;
+      type: string;
+      size: number;
+      description?: string | null;
+      tags: string;
+      fileId: string;
+      hash: string;
+      ownerId: string;
+      isFavorite: boolean;
+      createdAt: Date;
+      modifiedAt: Date;
+    }> = [];
 
     for (const megaFile of megaFiles) {
       const hash = crypto.createHash('sha256').update(megaFile.buffer).digest('hex');
@@ -502,11 +702,16 @@ export class DocumentService {
       if (existingDocument) {
         console.log(`   🔄 Document existant trouvé: ${existingDocument.name}. Mise à jour...`);
         
-        // Mise à jour du document existant
+        // Mise à jour du document existant avec détection de type
+        const detectedType = this.getDocumentTypeFromFile(megaFile.name, megaFile.mimeType);
+        
         const updatedDocument = await prisma.document.update({
           where: { id: existingDocument.id },
           data: {
             name: megaFile.name, // Mettre à jour le nom si il a changé
+            type: detectedType, // Mettre à jour le type
+            tags: this.addTagFromType(detectedType, existingDocument.tags), // Ajouter les tags basés sur le type
+            size: megaFile.size, // Mettre à jour la taille
             fileId: megaFile.fileId, // Mettre à jour le fileId MEGA
             modifiedAt: new Date(),
           },
@@ -524,17 +729,16 @@ export class DocumentService {
       } else {
         console.log(`   ✨ Nouveau fichier détecté: ${megaFile.name}. Ajout à la base de données...`);
         
-        // Création d'un nouveau document
-        const fileExt = megaFile.name.split('.').pop() || 'bin';
+        // Création d'un nouveau document avec détection de type appropriée
+        const detectedType = this.getDocumentTypeFromFile(megaFile.name, megaFile.mimeType);
         
         const document = await prisma.document.create({
           data: {
             name: megaFile.name,
-            type: fileExt,
-            category: 'synced',
-            size: megaFile.buffer.length,
+            type: detectedType,
+            size: megaFile.size, // Utiliser la taille du buffer retournée par MEGA
             description: 'Document synchronisé depuis MEGA',
-            tags: 'synced',
+            tags: this.addTagFromType(detectedType, 'synced'),
             fileId: megaFile.fileId,
             hash: hash,
             ownerId: defaultOwnerId,
@@ -549,7 +753,7 @@ export class DocumentService {
           details: `Nouveau document synchronisé depuis MEGA: ${document.name}`,
         });
 
-        newDocuments.push(document as any);
+        newDocuments.push(document);
       }
     }
 
@@ -562,17 +766,31 @@ export class DocumentService {
     };
   }
 
-  private getMimeTypeFromExtension(type: string): string {
+  /**
+   * Convertit un type de document en type MIME
+   * @param type Type de document
+   * @returns Type MIME correspondant
+   */
+  private getMimeTypeFromType(type: string): string {
     const mimeTypes: Record<string, string> = {
       pdf: "application/pdf",
       jpg: "image/jpeg",
       jpeg: "image/jpeg",
       png: "image/png",
+      gif: "image/gif",
+      bmp: "image/bmp",
       doc: "application/msword",
       docx: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+      xls: "application/vnd.ms-excel",
+      xlsx: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+      ppt: "application/vnd.ms-powerpoint",
+      pptx: "application/vnd.openxmlformats-officedocument.presentationml.presentation",
       txt: "text/plain",
+      zip: "application/zip",
+      rar: "application/x-rar-compressed",
     };
 
     return mimeTypes[type.toLowerCase()] || "application/octet-stream";
   }
+
 }

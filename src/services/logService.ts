@@ -12,9 +12,25 @@ export type LogAction =
   | 'DOCUMENT_DOWNLOAD'
   | 'DOCUMENT_FAVORITE'
   | 'DOCUMENT_UNFAVORITE'
-  | 'DOCUMENT_SYNC';
+  | 'DOCUMENT_ARCHIVE'
+  | 'DOCUMENT_UNARCHIVE'
+  | 'DOCUMENT_SYNC'
+  | 'FOLDER_CREATE'
+  | 'FOLDER_UPDATE'
+  | 'FOLDER_DELETE'
+  | 'FOLDER_MOVE'
+  | 'TAG_CREATE'
+  | 'TAG_UPDATE'
+  | 'TAG_DELETE'
+  | 'SEARCH_PERFORM'
+  | 'SYSTEM_BACKUP'
+  | 'SYSTEM_RESTORE'
+  | 'CREATE'
+  | 'UPDATE'
+  | 'DELETE'
+  | 'MOVE';
 
-export type LogEntity = 'USER' | 'DOCUMENT';
+export type LogEntity = 'USER' | 'DOCUMENT' | 'FOLDER' | 'TAG' | 'SYSTEM';
 
 export interface LogData {
   action: LogAction;
@@ -25,6 +41,7 @@ export interface LogData {
   userAgent?: string;
   userId?: string;
   documentId?: string;
+  folderId?: string;
 }
 
 export class LogService {
@@ -40,6 +57,7 @@ export class LogService {
           userAgent: data.userAgent,
           userId: data.userId,
           documentId: data.documentId,
+          folderId: data.folderId,
         },
       });
     } catch (error) {

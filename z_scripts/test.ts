@@ -25,6 +25,8 @@ import { UserService } from '../src/services/userService';
 import { DocumentService } from '../src/services/documentService';
 import { LogService } from '../src/services/logService';
 import { MegaStorageService } from '../src/services/megaStorage';
+import { FolderService } from '../src/services/folderService';
+import { UserMegaConfigService } from '../src/services/userMegaConfigService';
 
 // Initialisation des services
 const prisma = new PrismaClient();
@@ -32,6 +34,8 @@ const logService = new LogService();
 const userService = new UserService(logService);
 const megaStorageService = new MegaStorageService();
 const documentService = new DocumentService(megaStorageService, logService);
+const folderService = new FolderService(logService);
+const userMegaConfigService = new UserMegaConfigService();
 
 // Configuration du script
 const CONFIG = {
@@ -62,6 +66,18 @@ const TEST_DATA = {
     tags: "test,cli",
     filePath: "./z_scripts/test.txt",
     updatedName: "Updated Test Document"
+  },
+  folder: {
+    name: "Test Folder",
+    description: "This is a test folder",
+    color: "#FF5733",
+    updatedName: "Updated Test Folder",
+    updatedColor: "#33FF57"
+  },
+  megaConfig: {
+    email: "test-mega@example.com",
+    password: "mega-test-password-123",
+    updatedEmail: "updated-mega@example.com"
   }
 };
 
@@ -77,6 +93,8 @@ interface FunctionalTest {
 // Variables pour stocker les données de test créées
 let createdUserId: string;
 let createdDocumentId: string;
+let createdFolderId: string;
+let createdSubFolderId: string;
 let testFolderId: string; // ID du dossier de test sur MEGA
 
 // Configuration des tests fonctionnels à exécuter
@@ -237,6 +255,139 @@ const functionalTests: FunctionalTest[] = [
     }
   },
 
+  // === PHASE 3.5: TESTS DES DOSSIERS ===
+  {
+    name: 'folder-create',
+    description: '📁 Création d\'un dossier via FolderService',
+    canFail: false,
+    testFunction: async () => {
+      const folder = await folderService.createFolder({
+        name: TEST_DATA.folder.name,
+        description: TEST_DATA.folder.description,
+        color: TEST_DATA.folder.color,
+        ownerId: createdUserId,
+      });
+      createdFolderId = folder.id;
+      return folder;
+    }
+  },
+  {
+    name: 'folder-read',
+    description: '🔍 Lecture d\'un dossier via FolderService',
+    canFail: false,
+    testFunction: async () => {
+      if (!createdFolderId) {
+        throw new Error('Aucun dossier créé pour la lecture');
+      }
+      return await folderService.getFolderById(createdFolderId, createdUserId);
+    }
+  },
+  {
+    name: 'folder-list',
+    description: '📋 Liste des dossiers racine via FolderService',
+    canFail: false,
+    testFunction: async () => {
+      return await folderService.getRootFolders(createdUserId);
+    }
+  },
+  {
+    name: 'folder-create-subfolder',
+    description: '📁 Création d\'un sous-dossier via FolderService',
+    canFail: false,
+    testFunction: async () => {
+      if (!createdFolderId) {
+        throw new Error('Aucun dossier parent créé');
+      }
+      const subFolder = await folderService.createFolder({
+        name: "Sub " + TEST_DATA.folder.name,
+        description: "Sous-dossier de test",
+        color: "#9933FF",
+        ownerId: createdUserId,
+        parentId: createdFolderId,
+      });
+      createdSubFolderId = subFolder.id;
+      return subFolder;
+    }
+  },
+  {
+    name: 'folder-update',
+    description: '✏️ Mise à jour d\'un dossier via FolderService',
+    canFail: false,
+    testFunction: async () => {
+      if (!createdFolderId) {
+        throw new Error('Aucun dossier créé pour la mise à jour');
+      }
+      return await folderService.updateFolder(createdFolderId, {
+        name: TEST_DATA.folder.updatedName,
+        color: TEST_DATA.folder.updatedColor,
+      }, createdUserId);
+    }
+  },
+  {
+    name: 'document-move-to-folder',
+    description: '📂 Déplacement de documents vers un dossier',
+    canFail: false,
+    testFunction: async () => {
+      if (!createdDocumentId || !createdFolderId) {
+        throw new Error('Document ou dossier manquant pour le déplacement');
+      }
+      return await folderService.moveDocumentToFolder(createdDocumentId, createdFolderId, createdUserId);
+    }
+  },
+
+  // === PHASE 3.6: TESTS DE CONFIGURATION MEGA ===
+  {
+    name: 'mega-config-create',
+    description: '🔧 Création d\'une configuration MEGA via UserMegaConfigService',
+    canFail: false,
+    testFunction: async () => {
+      return await userMegaConfigService.upsertUserMegaConfig(createdUserId, {
+        email: TEST_DATA.megaConfig.email,
+        password: TEST_DATA.megaConfig.password,
+        isActive: true,
+      });
+    }
+  },
+  {
+    name: 'mega-config-read',
+    description: '🔍 Lecture d\'une configuration MEGA via UserMegaConfigService',
+    canFail: false,
+    testFunction: async () => {
+      return await userMegaConfigService.getUserMegaConfig(createdUserId);
+    }
+  },
+  {
+    name: 'mega-config-update',
+    description: '✏️ Mise à jour d\'une configuration MEGA via UserMegaConfigService',
+    canFail: false,
+    testFunction: async () => {
+      return await userMegaConfigService.upsertUserMegaConfig(createdUserId, {
+        email: TEST_DATA.megaConfig.updatedEmail,
+        password: TEST_DATA.megaConfig.password,
+        isActive: true,
+      });
+    }
+  },
+  {
+    name: 'mega-config-toggle',
+    description: '🔄 Activation/désactivation d\'une configuration MEGA',
+    canFail: false,
+    testFunction: async () => {
+      return await userMegaConfigService.toggleUserMegaConfig(createdUserId, false);
+    }
+  },
+  {
+    name: 'document-toggle-favorite',
+    description: '⭐ Bascule du statut favori d\'un document',
+    canFail: false,
+    testFunction: async () => {
+      if (!createdDocumentId) {
+        throw new Error('Aucun document créé pour basculer le favori');
+      }
+      return await documentService.toggleFavorite(createdDocumentId, createdUserId);
+    }
+  },
+
   // === PHASE 4: SYNCHRONISATION ET SUPPRESSION ===
   {
     name: 'document-sync',
@@ -280,6 +431,36 @@ const functionalTests: FunctionalTest[] = [
         throw new Error('Aucun document créé pour la suppression');
       }
       return await documentService.deleteDocument(createdDocumentId, createdUserId, testFolderId);
+    }
+  },
+  {
+    name: 'folder-delete-subfolder',
+    description: '🗑️ Suppression d\'un sous-dossier via FolderService',
+    canFail: false,
+    testFunction: async () => {
+      if (!createdSubFolderId) {
+        throw new Error('Aucun sous-dossier créé pour la suppression');
+      }
+      return await folderService.deleteFolder(createdSubFolderId, createdUserId);
+    }
+  },
+  {
+    name: 'folder-delete',
+    description: '🗑️ Suppression d\'un dossier via FolderService',
+    canFail: false,
+    testFunction: async () => {
+      if (!createdFolderId) {
+        throw new Error('Aucun dossier créé pour la suppression');
+      }
+      return await folderService.deleteFolder(createdFolderId, createdUserId);
+    }
+  },
+  {
+    name: 'mega-config-delete',
+    description: '🗑️ Suppression d\'une configuration MEGA via UserMegaConfigService',
+    canFail: false,
+    testFunction: async () => {
+      return await userMegaConfigService.deleteUserMegaConfig(createdUserId);
     }
   },
   {
@@ -353,13 +534,15 @@ async function clearAllTables(): Promise<void> {
     console.log('🧹 Nettoyage de la base de données...');
     
     // Compter d'abord les enregistrements existants
-    const [logCount, documentCount, userCount] = await Promise.all([
+    const [logCount, documentCount, folderCount, megaConfigCount, userCount] = await Promise.all([
       prisma.log.count(),
       prisma.document.count(), 
+      prisma.folder.count(),
+      prisma.userMegaConfig.count(),
       prisma.user.count()
     ]);
     
-    console.log(`   📊 État actuel: ${userCount} utilisateurs, ${documentCount} documents, ${logCount} logs`);
+    console.log(`   📊 État actuel: ${userCount} utilisateurs, ${documentCount} documents, ${folderCount} dossiers, ${megaConfigCount} configs MEGA, ${logCount} logs`);
     
     if (logCount + documentCount + userCount === 0) {
       console.log('✅ Base de données déjà vide');
@@ -367,15 +550,23 @@ async function clearAllTables(): Promise<void> {
     }
     
     // Ordre de suppression respectant les contraintes de clés étrangères
-    // 1. Supprimer les logs (qui référencent users et documents)
+    // 1. Supprimer les logs (qui référencent users, documents et folders)
     const deletedLogs = await prisma.log.deleteMany({});
     console.log(`   📊 ${deletedLogs.count} logs supprimés`);
     
-    // 2. Supprimer les documents (qui référencent users)
+    // 2. Supprimer les documents (qui référencent users et folders)
     const deletedDocuments = await prisma.document.deleteMany({});
     console.log(`   📄 ${deletedDocuments.count} documents supprimés`);
     
-    // 3. Supprimer les utilisateurs
+    // 3. Supprimer les dossiers (qui référencent users)
+    const deletedFolders = await prisma.folder.deleteMany({});
+    console.log(`   📁 ${deletedFolders.count} dossiers supprimés`);
+    
+    // 4. Supprimer les configurations MEGA (qui référencent users)
+    const deletedMegaConfigs = await prisma.userMegaConfig.deleteMany({});
+    console.log(`   🔧 ${deletedMegaConfigs.count} configurations MEGA supprimées`);
+    
+    // 5. Supprimer les utilisateurs
     const deletedUsers = await prisma.user.deleteMany({});
     console.log(`   👤 ${deletedUsers.count} utilisateurs supprimés`);
     
