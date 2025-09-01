@@ -28,7 +28,6 @@ documentCommands
         name: data.name,
         type: data.type,
         ownerEmail: data.ownerEmail,
-        category: data.category,
         description: data.description,
         tags: data.tags,
         filePath: data.filePath,
@@ -46,9 +45,11 @@ documentCommands
         ID: document.id,
         Nom: document.name,
         Type: document.type,
-        Categorie: document.category,
+        Description: document.description,
+        Tags: document.tags,
         Taille: document.size,
         'File ID': document.fileId,
+        Favori: document.isFavorite ? '⭐' : '❌',
         'Cree le': document.createdAt,
       }]);
       
@@ -89,7 +90,6 @@ documentCommands
         ID: document.id,
         Nom: document.name,
         Type: document.type,
-        Categorie: document.category,
         Description: document.description,
         Tags: Array.isArray(document.tags) ? document.tags.join(', ') : document.tags,
         Taille: document.size,
@@ -153,7 +153,8 @@ documentCommands
         ID: doc.id.substring(0, 8) + '...',
         Nom: doc.name,
         Type: doc.type,
-        Categorie: doc.category,
+        Description: doc.description?.substring(0, 50) + (doc.description && doc.description.length > 50 ? '...' : ''),
+        Tags: doc.tags,
         Taille: doc.size,
         Proprietaire: doc.owner.email,
         Favori: doc.isFavorite ? '⭐' : '❌',
@@ -248,10 +249,77 @@ documentCommands
         process.exit(1);
       }
       
-      const result = await documentService.deleteDocument(document.id, data.ownerEmail);
+      const result = await documentService.deleteDocument(document.id, document.ownerId);
       
       console.log('✅ Document supprime avec succes!');
-      console.log(`📊 ${result.message}`);
+      console.log(`📊 Suppression terminée`);
+      
+    } catch (error) {
+      console.error('❌ Erreur:', error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+// Commande favorite (nouvelle fonctionnalité)
+documentCommands
+  .command('favorite')
+  .description('⭐ Basculer le statut favori d\'un document')
+  .requiredOption('-n, --name <name>', 'Nom du document')
+  .requiredOption('-e, --email <email>', 'Email du propriétaire')
+  .action(async (options) => {
+    try {
+      console.log('⭐ Bascule du statut favori du document...');
+      
+      // Obtenir le document par nom et propriétaire
+      const document = await documentService.getDocumentByNameAndOwner(options.name, options.email);
+      if (!document) {
+        console.error('❌ Document non trouvé');
+        process.exit(1);
+      }
+      
+      const updatedDocument = await documentService.toggleFavorite(document.id, document.ownerId);
+      
+      console.log('✅ Statut favori mis à jour!');
+      console.table([{
+        ID: updatedDocument.id,
+        Nom: updatedDocument.name,
+        'Statut Favori': updatedDocument.isFavorite ? '⭐ Favori' : '❌ Non favori',
+        'Mis à jour le': updatedDocument.modifiedAt,
+      }]);
+      
+    } catch (error) {
+      console.error('❌ Erreur:', error instanceof Error ? error.message : error);
+      process.exit(1);
+    }
+  });
+
+// Commande favorites (lister les favoris)
+documentCommands
+  .command('favorites')
+  .description('⭐ Lister tous les documents favoris')
+  .requiredOption('-e, --email <email>', 'Email du propriétaire')
+  .action(async (options) => {
+    try {
+      console.log('⭐ Récupération des documents favoris...');
+      
+      // Obtenir l'utilisateur par email pour avoir son ID
+      const documents = await documentService.getAllDocuments(0, 100);
+      const userDocuments = documents.filter(doc => doc.owner.email === options.email && doc.isFavorite);
+      
+      if (userDocuments.length === 0) {
+        console.log('📋 Aucun document favori trouvé pour cet utilisateur.');
+        return;
+      }
+      
+      console.log(`✅ ${userDocuments.length} document(s) favori(s) trouvé(s):`);
+      console.table(userDocuments.map(doc => ({
+        ID: doc.id.substring(0, 8) + '...',
+        Nom: doc.name,
+        Type: doc.type,
+        Taille: doc.size,
+        'Ajouté aux favoris': '⭐',
+        'Créé le': new Date(doc.createdAt).toLocaleDateString('fr-FR'),
+      })));
       
     } catch (error) {
       console.error('❌ Erreur:', error instanceof Error ? error.message : error);
